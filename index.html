@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dailymotion Video Uploader</title>
+    <script src="https://api.dmcdn.net/all.js"></script> <!-- Dailymotion JavaScript SDK -->
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .container { border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+        input[type="file"] { margin: 10px 0; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        #status { margin-top: 20px; color: #d35400; }
+        #progress { width: 100%; height: 20px; background: #eee; margin-top: 10px; }
+        #progress-bar { height: 100%; width: 0%; background: #27ae60; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dailymotion Video Uploader (Client-Side Demo)</h1>
+        <p><strong>সতর্কতা:</strong> এটি একটি ডেমো অ্যাপ। আপনার API Key হার্ডকোড করা আছে – প্রোডাকশনে এটি করবেন না। Public API Key ব্যবহার করুন এবং Dailymotion Studio-এ domain restrict করুন। Private Secret কখনো ক্লায়েন্ট-সাইডে রাখবেন না।</p>
+        
+        <div id="login-section">
+            <button onclick="login()">Dailymotion-এ লগইন করুন (আপলোডের জন্য অনুমতি দিন)</button>
+        </div>
+        
+        <div id="upload-section" class="hidden">
+            <h3>ভিডিও আপলোড করুন</h3>
+            <input type="file" id="videoFile" accept="video/*" /><br/>
+            <label>টাইটেল: <input type="text" id="videoTitle" value="My Uploaded Video" /></label><br/>
+            <button onclick="startUpload()">আপলোড শুরু করুন</button>
+        </div>
+        
+        <div id="status"></div>
+        <div id="progress" class="hidden">
+            <div id="progress-bar"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = '1656b7e3e6c4185e90ba'; // আপনার Public API Key
+        const SCOPES = 'manage_videos userinfo'; // manage_videos স্কোপ বাধ্যতামূলক
+
+        // SDK ইনিশিয়ালাইজ
+        DM.init({
+            apiKey: API_KEY,
+            cookie: true
+        });
+
+        // লগইন স্ট্যাটাস চেক
+        function checkLoginStatus() {
+            DM.getLoginStatus(function(response) {
+                if (response.status === 'connected') {
+                    document.getElementById('login-section').classList.add('hidden');
+                    document.getElementById('upload-section').classList.remove('hidden');
+                    updateStatus('লগইন সফল! ভিডিও সিলেক্ট করুন।');
+                } else {
+                    document.getElementById('login-section').classList.remove('hidden');
+                    document.getElementById('upload-section').classList.add('hidden');
+                }
+            });
+        }
+
+        // লগইন ফাংশন
+        function login() {
+            DM.login(function(response) {
+                if (response.authResponse) {
+                    checkLoginStatus();
+                } else {
+                    updateStatus('লগইন বাতিল করা হয়েছে বা ব্যর্থ।');
+                }
+            }, { scope: SCOPES });
+        }
+
+        // স্ট্যাটাস আপডেট
+        function updateStatus(msg) {
+            document.getElementById('status').innerHTML = msg;
+        }
+
+        // প্রোগ্রেস আপডেট
+        function updateProgress(percent) {
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress').classList.remove('hidden');
+        }
+
+        // আপলোড প্রক্রিয়া
+        function startUpload() {
+            const file = document.getElementById('videoFile').files[0];
+            const title = document.getElementById('videoTitle').value || 'Untitled Video';
+            
+            if (!file) {
+                updateStatus('দয়া করে একটি ভিডিও ফাইল সিলেক্ট করুন।');
+                return;
+            }
+
+            updateStatus('আপলোড URL নেওয়া হচ্ছে...');
+
+            // ধাপ ১: টেম্পোরারি আপলোড URL নিন
+            DM.api('/file/upload', 'GET', {}, function(response) {
+                if (response.upload_url) {
+                    uploadFileToDailymotion(response.upload_url, file, title);
+                } else {
+                    updateStatus('আপলোড URL পাওয়া যায়নি।');
+                }
+            });
+        }
+
+        // ধাপ ২: ফাইল আপলোড (browser থেকে সরাসরি)
+        function uploadFileToDailymotion(uploadUrl, file, title) {
+            updateStatus('ভিডিও আপলোড হচ্ছে... (এটি সময় নিতে পারে)');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', uploadUrl, true);
+
+            // প্রোগ্রেস
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    updateProgress(percent);
+                }
+            };
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    updateStatus('ফাইল আপলোড সফল! ভিডিও পাবলিশ করা হচ্ছে...');
+                    publishVideo(xhr.responseText, title); // রিটার্ন করা URL
+                } else {
+                    updateStatus('ফাইল আপলোড ব্যর্থ: ' + xhr.status);
+                }
+            };
+
+            xhr.onerror = function() {
+                updateStatus('আপলোডে সমস্যা হয়েছে।');
+            };
+
+            xhr.send(formData);
+        }
+
+        // ধাপ ৩: ভিডিও অবজেক্ট তৈরি ও পাবলিশ
+        function publishVideo(uploadedUrl, title) {
+            const params = {
+                url: uploadedUrl,
+                title: title,
+                published: true,
+                is_created_for_kids: false,
+                // channel: 'video' // ডিফল্ট বা আপনার চ্যানেল (যদি দরকার হয় তাহলে /me/channels দিয়ে নিন)
+            };
+
+            DM.api('/me/videos', 'POST', params, function(response) {
+                if (response.id) {
+                    updateStatus('ভিডিও সফলভাবে আপলোড ও পাবলিশ হয়েছে! ভিডিও আইডি: ' + response.id + 
+                                 '<br><a href="https://www.dailymotion.com/video/' + response.id + '" target="_blank">দেখুন</a>');
+                    updateProgress(0);
+                    document.getElementById('progress').classList.add('hidden');
+                } else {
+                    updateStatus('ভিডিও পাবলিশ ব্যর্থ: ' + JSON.stringify(response));
+                }
+            });
+        }
+
+        // পেজ লোডে স্ট্যাটাস চেক
+        window.onload = checkLoginStatus;
+    </script>
+</body>
+</html>
