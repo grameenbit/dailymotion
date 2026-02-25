@@ -1,3 +1,3 @@
-# Micro Freelancing Platform
+# Project Structure for Micro Freelancing Platform
 
-This project is a micro freelancing platform, where users can sign up, create profiles, and find freelance work.
+This repository is organized into directories as follows:
